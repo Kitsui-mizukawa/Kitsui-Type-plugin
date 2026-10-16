@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Kitsu Auto Typeset</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="core.js"></script>
+    <script src="ps-core.js"></script>
+    <script src="text-engine.js"></script>
+    <script src="notes.js"></script>
+    <script src="font-styles.js"></script>
+    <script src="clean-bubble.js"></script>
+    <script src="preview.js"></script>
+    <script src="main.js"></script>
+</head>
+
+<body>
+
+    <div class="view" id="view-notes">
+        <div class="section-label-row">
+            <span class="section-label">Text Queue</span>
+            <span class="note-count" id="note-count">0</span>
+        </div>
+
+        <div class="note-actions">
+            <button class="btn-import" id="btn-import-txt"
+                title="Load a script from a .txt file — reliable for hundreds of lines">Import .txt</button>
+        </div>
+
+        <div class="note-list" id="note-list">
+        </div>
+
+        <div class="pv-scroll" id="pv-scroll">
+            <details class="preview-panel" id="preview-panel" open>
+                <summary>Shaping preview</summary>
+                <div class="pv-ctrls">
+                    <div class="ctrl pv-ctrl-half" title="Bubble width used for the preview (defaults to the active selection's width)">
+                        <label><span class="pv-long">Bubble </span>W</label>
+                        <input type="range" id="pv-selw" min="80" max="1200" value="320">
+                        <span class="val" id="pv-selw-val">320</span>
+                    </div>
+                    <div class="ctrl pv-ctrl-half" title="Bubble height used for the preview (defaults to the active selection's height)">
+                        <label><span class="pv-long">Bubble </span>H</label>
+                        <input type="range" id="pv-selh" min="80" max="1200" value="280">
+                        <span class="val" id="pv-selh-val">280</span>
+                    </div>
+                    <div class="ctrl pv-ctrl-soft"
+                        title="Edge softness: how gently the lines taper toward the bubble edge. Higher = fuller edge lines. Saved to Settings; the Soften −/+ buttons use the same value.">
+                        <label>Soft<span class="pv-long">ness</span></label>
+                        <input type="range" class="pv-cslider" data-target="input-v4-soften" data-mult="100" min="20"
+                            max="120" value="60">
+                        <span class="val" id="pv-soften-val">0.60</span>
+                    </div>
+                </div>
+                <div id="pv-stage" class="pv-stage-wrap"></div>
+                <div class="legend">
+                    <span class="sw sw-yellow"></span> bubble size
+                    <span class="sw sw-green"></span> text bounds
+                </div>
+                <div id="pv-metrics" class="metrics"></div>
+                <label class="chk pv-live-chk is-on" title="Live preview: Bubble W/H follow the active selection in Photoshop"><input type="checkbox" id="pv-live" checked> <span>Live<span class="pv-long"> preview</span></span></label>
+            </details>
+        </div>
+
+        <div class="restyle-strip" id="restyle-strip"></div>
+
+    </div>
+
+    <div class="view" id="view-fontsettings" style="display:none">
+        <div class="section-label-row">
+            <span class="section-label">Font Settings</span>
+        </div>
+        <div class="note-actions fontsettings-actions">
+            <button class="btn-import" id="btn-import-typer"
+                title="Import a style library (.json) — TypeR export or Kitsu export. See Import mode below.">Import TypeR JSON</button>
+            <button class="btn-import" id="btn-export-styles"
+                title="Export all folders & styles to a .json file (backup). Can be imported again here or in TypeR.">Export JSON</button>
+        </div>
+        <div class="checkbox-row fontsettings-import-mode"
+            title="Merge: imported folders & styles are added after the existing ones (same folder name gets a (2) suffix). Replace all: the whole library is replaced — the old one is backed up first (Settings → Data → Restore previous styles).">
+            <span class="checkbox-label-plain">Import mode</span>
+            <select id="select-import-mode" class="config-input config-input-wide">
+                <option value="merge" selected>Merge (add to library)</option>
+                <option value="replace">Replace all (auto backup)</option>
+            </select>
+        </div>
+        <div class="folder-list" id="folder-list">
+        </div>
+        <div class="fontsettings-footer">
+            <button class="btn-secondary" id="btn-add-folder">+ Add folder</button>
+            <button class="btn-secondary" id="btn-add-style">+ Add style</button>
+        </div>
+        <div class="hint">
+            A folder holds styles; activate one folder (checkbox) to use it on Apply. The first style in a
+            folder is the folder default (for bubbles whose tag does not match). Click a style name to
+            edit it. Each style's tag is the line prefix that marks a bubble for that style (e.g. <b>[]:</b>);
+            the longest matching tag wins.
+        </div>
+    </div>
+
+    <div class="view" id="view-styleeditor" style="display:none">
+        <div class="section-label-row">
+            <button class="btn-link" id="btn-style-back">Back</button>
+            <span class="section-label">Style Editing</span>
+            <button class="btn-link" id="btn-style-save"
+                title="Save style & re-scan queue prefixes with the latest tags.">Save</button>
+        </div>
+        <div class="hint" id="styleeditor-body"></div>
+    </div>
+
+    <div class="view" id="view-settings" style="display:none">
+        <div class="settings-tabs">
+            <button class="settings-tab-btn active" data-stab="general">General</button>
+            <button class="settings-tab-btn" data-stab="appearance">Appearance</button>
+            <button class="settings-tab-btn" data-stab="behavior">Behavior</button>
+            <button class="settings-tab-btn" data-stab="shortcuts">Shortcuts</button>
+            <button class="settings-tab-btn" data-stab="data">Data</button>
+        </div>
+
+        <div class="settings-tab-body">
+            <div class="settings-tab" id="stab-general">
+                <div class="section-label">Tags to skip lines</div>
+                <textarea id="input-ignore-prefixes" class="config-input config-input-block config-textarea" rows="5"
+                    spellcheck="false">##
+Page
+PG.
+PAGE
+Pg.
+Pg
+sfx
+SFX
+Sfx
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9</textarea>
+                <div class="se-help">Separate tags with a new line or ; . If a line starts with one of these tags, the line is SKIPPED (not pasted) but still shown as context.</div>
+
+                <div class="section-label">Lines without a tag</div>
+                <div class="checkbox-row"
+                    title="Lines that match no bubble / follow / skip / page tag. Skip: shown as highlighted context, never pasted. Paste: treated as bubbles and applied with the active folder's default (first) style.">
+                    <span class="checkbox-label-plain">Mode</span>
+                    <select id="select-noprefix-mode" class="config-input config-input-wide">
+                        <option value="skip" selected>Skip (show as context)</option>
+                        <option value="paste">Paste (default style)</option>
+                    </select>
+                </div>
+                <div class="se-help">Paste mode: translator notes, credits and any other line without a tag are pasted too — add their prefixes to Tags to skip lines. Press Save to re-scan the queue.</div>
+
+                <div class="section-label">Page Mark (page separator bar)</div>
+                <textarea id="input-page-marks" class="config-input config-input-block config-textarea" rows="3"
+                    spellcheck="false">Page
+PAGE
+PG.
+Pg.
+Pg
+PG</textarea>
+                <div class="se-help">Line prefixes shown as a page separator bar (auto-skipped). One entry per line.</div>
+
+                <div class="section-label">Follow tags (style follows the previous prefix)</div>
+                <textarea id="input-follow-prefixes" class="config-input config-input-block config-textarea" rows="2"
+                    spellcheck="false">//</textarea>
+                <div class="se-help">Bubble prefixes whose style FOLLOWS the previous bubble line (double bubble). Still applied as a separate bubble. One entry per line.</div>
+            </div>
+
+            <div class="settings-tab" id="stab-appearance" style="display:none">
+                <div class="section-label">UI Font Size</div>
+                <div class="checkbox-row"
+                    title="Auto: the panel's default font sizes. Custom: scale all panel text so the base size (normally 11 px) becomes the value below.">
+                    <span class="checkbox-label-plain">Mode</span>
+                    <select id="select-ui-font-mode" class="config-input config-input-wide">
+                        <option value="auto" selected>Auto (default)</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+                <div class="checkbox-row" id="row-ui-font-size"
+                    title="Base UI font size in px (8–16, default 11). Every panel text size scales with it.">
+                    <span class="checkbox-label-plain">Base size</span>
+                    <div class="input-unit-group">
+                        <sp-textfield id="input-ui-font-size" class="config-input" value="11" quiet></sp-textfield>
+                        <span class="unit-label">px</span>
+                    </div>
+                </div>
+                <div class="se-help">Custom: 8–16 px (default 11). Native Photoshop controls (dropdowns, checkboxes, text fields) keep their own size.</div>
+
+                <div class="section-label">Queue Display</div>
+                <div class="checkbox-row"
+                    title="Full: all bubbles shown, CURRENT auto-scrolls to center. Compact: only a few bubbles around CURRENT.">
+                    <span class="checkbox-label-plain">Mode</span>
+                    <select id="select-queue-view" class="config-input config-input-wide">
+                        <option value="full" selected>Full (full scroll)</option>
+                        <option value="compact">Compact (compact window)</option>
+                    </select>
+                </div>
+
+                <div class="section-label">Shaping Preview</div>
+                <div class="checkbox-row"
+                    title="Longest side of the shaping preview in the Notes view (80–320 px). Visual only — line breaks and Apply results do not change.">
+                    <span class="checkbox-label-plain">Preview size</span>
+                    <div class="input-unit-group">
+                        <sp-textfield id="input-preview-size" class="config-input" value="140" quiet></sp-textfield>
+                        <span class="unit-label">px</span>
+                    </div>
+                </div>
+                <div class="checkbox-row"
+                    title="Font size of the text inside the shaping preview. 0 = auto (the note style's font size, scaled to the preview). Visual only — line breaks and Apply results do not change.">
+                    <span class="checkbox-label-plain">Preview font size</span>
+                    <div class="input-unit-group">
+                        <sp-textfield id="input-preview-font" class="config-input" value="0" quiet></sp-textfield>
+                        <span class="unit-label">px</span>
+                    </div>
+                </div>
+                <div class="se-help">Preview font size: 0 = auto (follows the style font size, scaled to the preview). 7–32 px = fixed size.</div>
+                <div class="checkbox-row" title="Hide the legend and the metrics lines under the preview to save space.">
+                    <sp-checkbox id="checkbox-preview-compact">Compact preview (hide legend &amp; metrics)</sp-checkbox>
+                </div>
+            </div>
+
+            <div class="settings-tab" id="stab-behavior" style="display:none">
+                <div class="section-label">Alignment</div>
+                <div class="checkbox-row" title="Paragraph text alignment">
+                    <span class="checkbox-label-plain">Align</span>
+                    <select id="select-align" class="config-input config-input-wide">
+                        <option value="center" selected>Center</option>
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                        <option value="justifyAll">Justify</option>
+                    </select>
+                </div>
+
+                <div class="section-label">Shape Wrap &amp; Algorithm</div>
+                <div class="checkbox-row" title="Break lines so the text silhouette mimics the bubble shape">
+                    <span class="checkbox-label-plain">Shape</span>
+                    <select id="select-wrap-shape" class="config-input config-input-wide">
+                        <option value="none" selected>None (box text)</option>
+                        <option value="diamond">Diamond</option>
+                        <option value="ellipse">Ellipse</option>
+                        <option value="sine">Sine (sharp oval)</option>
+                    </select>
+                </div>
+                <div class="checkbox-row" title="Line-break strategy: Psacs-kp v4 — Knuth–Plass-penalty DP with all constants tunable below + a min-words-per-line guard.">
+                    <span class="checkbox-label-plain">Algorithm</span>
+                    <select id="select-algorithm" class="config-input config-input-wide">
+                        <option value="sinefastv4" selected>Psacs-kp v4 (tunable + min-words)</option>
+                    </select>
+                </div>
+
+                <div class="section-label">Shape Tuning (v4)</div>
+                <div class="se-help">Only affects the <b>Psacs-kp v4</b> algorithm. Defaults match v3.</div>
+                <div class="tune-grid">
+                    <div class="tune-subhead">Curve</div>
+                    <label class="tune-cell" title="Curve softening exponent (factor^exp). &lt;1 = wider edge lines than a pure sine.">
+                        <span>SOFTEN_EXP</span>
+                        <input type="number" id="input-v4-soften" class="config-input" min="0.05" max="2" step="0.05" value="0.6">
+                    </label>
+                    <label class="tune-cell" title="Lower bound on the curve factor (prevents the 1/t² blow-up in the relative cost).">
+                        <span>FLOOR</span>
+                        <input type="number" id="input-v4-floor" class="config-input" min="0" max="0.6" step="0.05" value="0.15">
+                    </label>
+                    <label class="tune-cell" title="Additive bonus for breaking after punctuation (,.!?;:…).">
+                        <span>PUNCT_BONUS</span>
+                        <input type="number" id="input-v4-punct" class="config-input" min="0" max="0.2" step="0.005" value="0.02">
+                    </label>
+
+                    <div class="tune-subhead">Anti-dent</div>
+                    <label class="tune-cell" title="Dent tolerance (fraction of peak) before the anti-dent penalty kicks in.">
+                        <span>MONO_SLACK</span>
+                        <input type="number" id="input-v4-slack" class="config-input" min="0" max="0.4" step="0.01" value="0.08">
+                    </label>
+                    <label class="tune-cell" title="Weight of the non-unimodal (dent) penalty against the curve direction.">
+                        <span>MONO_WEIGHT</span>
+                        <input type="number" id="input-v4-mweight" class="config-input" min="0" max="20" step="0.5" value="4">
+                    </label>
+
+                    <div class="tune-subhead">N-selection</div>
+                    <label class="tune-cell" title="targetAspect = aspect × bias. The ideal text block is slightly wider than tall.">
+                        <span>ASPECT_BIAS</span>
+                        <input type="number" id="input-v4-abias" class="config-input" min="0.2" max="2" step="0.05" value="0.8">
+                    </label>
+                    <label class="tune-cell" title="Weight of the aspect term in the N-selection score. Higher = N anchored more to the bubble shape.">
+                        <span>ASPECT_WEIGHT</span>
+                        <input type="number" id="input-v4-aweight" class="config-input" min="0" max="1" step="0.05" value="0.2">
+                    </label>
+                    <label class="tune-cell" title="Line height ≈ fontSize × leading (used for blockAspect).">
+                        <span>LEADING</span>
+                        <input type="number" id="input-v4-leading" class="config-input" min="0.8" max="2.2" step="0.05" value="1.4">
+                    </label>
+                    <label class="tune-cell" title="Cap line count to floor(words / value). Keeps short phrases from fragmenting into too many lines. 1 = off.">
+                        <span>MIN_WORDS/LINE</span>
+                        <input type="number" id="input-v4-minwords" class="config-input" min="1" max="4" step="1" value="1">
+                    </label>
+                    <label class="tune-cell" title="Reject first/last line when its total letters ≤ this value (prevents thin edge lines).">
+                        <span>Edge min letters</span>
+                        <input type="number" id="input-edge-min-letters" class="config-input" min="0" max="20" step="1" value="3">
+                    </label>
+                </div>
+
+                <div class="section-label">Auto-Resize</div>
+                <div class="checkbox-row"
+                    title="Auto-scale text so the largest dimension = N% of the selection. Aspect ratio preserved.">
+                    <sp-checkbox id="checkbox-auto-resize">Auto-Resize Text</sp-checkbox>
+                    <div class="input-unit-group">
+                        <sp-textfield id="input-resize-pct" class="config-input" value="80" quiet></sp-textfield>
+                        <span class="unit-label">%</span>
+                    </div>
+                </div>
+                <div class="checkbox-row"
+                    title="Auto-resize target reference. Box: % of the selection's bounding box (legacy). Shape: shrink per Shape Wrap. Area: measure the actual selection silhouette — best for round/cloud bubbles so text doesn't spill past the outline.">
+                    <span class="checkbox-label-plain">Fit to</span>
+                    <select id="select-resize-fit" class="config-input config-input-wide">
+                        <option value="bbox" selected>Bounding box (legacy)</option>
+                        <option value="shape">Shape factor (Shape Wrap)</option>
+                        <option value="area">Selection area (accurate)</option>
+                    </select>
+                </div>
+
+                <div class="section-label">Resize Buttons (− / +)</div>
+                <div class="checkbox-row"
+                    title="Text in selection: like the style buttons — make a selection on/near the bubble, press − / +, and the text layer inside the selection is picked (becomes the active layer) and resized; the selection is removed afterwards. No text in the selection, or no selection → the active text layer. Active layer: always the layer selected in the Layers panel.">
+                    <span class="checkbox-label-plain">Target</span>
+                    <select id="select-resize-target" class="config-input config-input-wide">
+                        <option value="selection" selected>Text in selection (like style buttons)</option>
+                        <option value="active">Active layer (Layers panel)</option>
+                    </select>
+                </div>
+                <div class="checkbox-row"
+                    title="Transform: scale the whole layer like Ctrl+T (line breaks preserved). Font size + reshape: change the real font size and re-run shape wrap — line breaks adapt to the new size. Uses the active selection's aspect if present, else the layer bounds.">
+                    <span class="checkbox-label-plain">Mode</span>
+                    <select id="select-resize-mode" class="config-input config-input-wide">
+                        <option value="transform" selected>Transform scale (keep breaks)</option>
+                        <option value="fontreshape">Font size + reshape (re-wrap)</option>
+                    </select>
+                </div>
+                <div class="checkbox-row" title="Size change per − / + button press (font size units).">
+                    <span class="checkbox-label-plain">Step</span>
+                    <div class="input-unit-group">
+                        <sp-textfield id="input-resize-step" class="config-input" value="2" quiet></sp-textfield>
+                        <span class="unit-label">pt</span>
+                    </div>
+                </div>
+
+                <div class="section-label">Style Buttons</div>
+                <div class="checkbox-row"
+                    title="Style button on a selection that already contains text (restyle): ON = re-wrap the text with the current Shape and re-center it in the bubble. OFF = only swap the font/style in place, keeping the line breaks. Pasting the CURRENT note into an empty selection always follows the Behavior settings.">
+                    <sp-checkbox id="checkbox-restyle-reshape" checked>Re-wrap text when restyling</sp-checkbox>
+                </div>
+                <div class="checkbox-row"
+                    title="Restyle: ON = the text takes the style's font size (and is auto-fitted to the bubble when re-wrap is on). OFF = keep the current text size.">
+                    <sp-checkbox id="checkbox-restyle-resize" checked>Use style size when restyling</sp-checkbox>
+                </div>
+
+                <div class="section-label">Clean Bubble</div>
+                <div class="checkbox-row"
+                    title="Which button sits in the action bar. Clean Bubble: fill the selection with the bubble color. Replace text: the text layer inside the selection is deleted and the CURRENT note is pasted in its place (style from its tag, same rules as APPLY), then the queue advances. Not available in Multi-Bubble mode.">
+                    <span class="checkbox-label-plain">Action bar button</span>
+                    <select id="select-bar-button" class="config-input config-input-wide">
+                        <option value="clean" selected>Clean Bubble</option>
+                        <option value="replace">Replace text</option>
+                    </select>
+                </div>
+                <div class="checkbox-row"
+                    title="Break the selection edge: contract then expand by this many px to remove the bubble tail.">
+                    <sp-checkbox id="checkbox-remove-tail" checked>Remove tail</sp-checkbox>
+                    <div class="input-unit-group">
+                        <sp-textfield id="input-remove-tail" class="config-input" value="8" quiet></sp-textfield>
+                        <span class="unit-label">px</span>
+                    </div>
+                </div>
+                <div class="checkbox-row"
+                    title="Close enclosed holes inside the bubble (letters) via flood-fill — the bubble's outer edge is unchanged.">
+                    <sp-checkbox id="checkbox-fill-holes" checked>Fill holes (algorithm)</sp-checkbox>
+                </div>
+                <div class="checkbox-row"
+                    title="Pull the fill edge INWARD by this many px (smooth anti-alias, won't spread over the bubble outline). 0 = AA edge without erosion.">
+                    <span class="checkbox-label-plain">Edge inset</span>
+                    <div class="input-unit-group">
+                        <sp-textfield id="input-edge-inset" class="config-input" value="1" quiet></sp-textfield>
+                        <span class="unit-label">px</span>
+                    </div>
+                </div>
+                <div class="checkbox-row"
+                    title="Per-area: each area filled with its local background color. Per-selection: detect one dominant color for the whole selection.">
+                    <span class="checkbox-label-plain">Color</span>
+                    <select id="select-clean-color" class="config-input config-input-wide">
+                        <option value="area" selected>Per-area (multi-color)</option>
+                        <option value="single">Per-selection (1 color)</option>
+                    </select>
+                </div>
+
+                <div class="section-label">Others</div>
+                <div class="checkbox-row"
+                    title="If ON: after Apply, CURRENT advances to the next bubble (the old bubble remains).">
+                    <sp-checkbox id="checkbox-pop-on-apply" checked>Advance to next bubble after Apply</sp-checkbox>
+                </div>
+                <div class="checkbox-row"
+                    title="Remove the bubble tail before placing text (contract→expand by the Clean Bubble 'Remove tail' px) so the center & size match the bubble body, not the tail.">
+                    <sp-checkbox id="checkbox-remove-tail-apply" checked>Remove tail on Apply</sp-checkbox>
+                </div>
+                <div class="checkbox-row"
+                    title="If ON: deselect the Photoshop selection after Apply so the new layer isn't masked.">
+                    <sp-checkbox id="checkbox-deselect-after" checked>Deselect after Apply</sp-checkbox>
+                </div>
+                <div class="checkbox-row"
+                    title="OFF (default): rely on PS notifications only, lighter on memory. ON: panel polls selection bounds every 5 seconds while hovered.">
+                    <sp-checkbox id="checkbox-live-selection">Live selection update</sp-checkbox>
+                </div>
+                <div class="checkbox-row"
+                    title="ON: each new selection (magic wand) is queued and CURRENT advances; APPLY then creates text in ALL queued bubbles at once. OFF: single bubble per Apply. Note: Multi-Bubble is not optimal yet — single-bubble Apply is more reliable.">
+                    <sp-checkbox id="checkbox-multi-bubble">Multi-Bubble mode (queue selections, apply all)</sp-checkbox>
+                </div>
+                <div class="se-help">Multi-Bubble is not optimal yet — single-bubble Apply is more reliable.</div>
+
+                <div class="section-label">Log</div>
+                <div class="checkbox-row"
+                    title="Off: record nothing — lowest RAM; the existing log is cleared right away. Errors only: errors &amp; warnings only. Normal: summary. Verbose: detailed log + ⏱ timings.">
+                    <span class="checkbox-label-plain">Level</span>
+                    <select id="select-log-level" class="config-input config-input-wide">
+                        <option value="off">Off (save RAM)</option>
+                        <option value="errors">Errors only</option>
+                        <option value="normal" selected>Normal (summary)</option>
+                        <option value="verbose">Verbose (detailed)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-tab" id="stab-shortcuts" style="display:none">
+                <div class="section-label">Keyboard shortcuts</div>
+                <div class="se-help">UXP plugins can't register keyboard shortcuts in Photoshop, and plugin commands don't show up in Edit → Keyboard Shortcuts. Kitsu is still working out a way to make shortcuts work well.</div>
+                <div class="settings-placeholder">kitsu benci adobe &gt;:v</div>
+            </div>
+
+            <div class="settings-tab" id="stab-data" style="display:none">
+                <div class="section-label">Plugin</div>
+                <button class="btn-secondary" id="btn-reload" style="width:100%"
+                    title="Reload the plugin panel (HTML/JS), same as Plugins → Kitsu Auto Typeset → Reload Plugin. Your queue, settings and styles are kept.">Reload Plugin</button>
+                <div class="section-label">Style library</div>
+                <button class="btn-secondary" id="btn-restore-fontdata" style="width:100%"
+                    title="Restore the style library that was backed up automatically before the last Replace import.">Restore previous styles</button>
+                <div class="se-help">Before each Replace import the current style library is backed up (1 slot). Restore swaps it back in; the library you had becomes the new backup, so pressing Restore again undoes it.</div>
+                <div class="section-label">Settings</div>
+                <div class="data-btn-row">
+                    <button class="btn-secondary" id="btn-export-settings"
+                        title="Save all settings (General, Appearance, Behavior) to a .json file — backup or move to another machine. The style library is exported separately in Font Settings.">Export settings</button>
+                    <button class="btn-secondary" id="btn-import-settings"
+                        title="Load settings from a .json file exported here. Applied and saved right away; the current settings are backed up first.">Import settings</button>
+                </div>
+                <button class="btn-secondary" id="btn-restore-settings" style="width:100%"
+                    title="Restore the settings that were backed up automatically before the last settings import.">Restore previous settings</button>
+                <div class="se-help">Import applies the file right away and re-scans the queue; settings missing from the file keep their current value. Before each import the current settings are backed up (1 slot). Restore swaps them back in; pressing Restore again undoes it. Styles are exported separately in Font Settings.</div>
+            </div>
+        </div>
+
+        <div class="settings-footer">
+            <button class="btn-run" id="btn-settings-save"
+                title="Save all settings & re-scan queue prefixes (lines reclassified with the latest prefixes).">Save</button>
+        </div>
+    </div>
+
+    <div class="view" id="view-log" style="display:none">
+        <div class="log-header-row">
+            <span class="section-label">Log</span>
+            <div class="log-actions">
+                <button class="log-clear" id="btn-save-log"
+                    title="Save the whole log (up to 5000 lines) to kitsu-log.txt in the plugin data folder — no dialog">save log</button>
+                <button class="log-clear" onclick="clearLog()">clear</button>
+            </div>
+        </div>
+        <div class="log-area" id="log-area">
+            <div class="log-entry info">Ready.</div>
+        </div>
+    </div>
+
+    <div class="action-bar">
+        <div class="status-pill status-none" id="status-pill" style="display:none"></div>
+        <div class="apply-row">
+            <button class="btn-run" id="btn-apply">APPLY + next</button>
+            <div class="resize-group" title="Resize the SELECTED text layer by the step (Settings → Behavior); it stays centered">
+                <button class="btn-resize" id="btn-resize-minus" title="Decrease font size by step">−</button>
+                <button class="btn-resize" id="btn-resize-plus" title="Increase font size by step">+</button>
+            </div>
+        </div>
+        <div class="btn-history-row">
+            <button class="btn-history btn-mb-toggle" id="btn-mb-toggle"
+                title="Multi-Bubble mode: queue several selections, then APPLY creates text in all at once (not optimal yet — single-bubble Apply is more reliable)">MB: OFF</button>
+            <button class="btn-history" id="btn-mb-clear" style="display:none"
+                title="Clear the multi-bubble selection queue">Clear queue</button>
+            <button class="btn-history btn-clean" id="btn-clean">Clean Bubble</button>
+            <div class="soften-group"
+                title="Psacs-kp v4 only: change SOFTEN_EXP and re-wrap the SELECTED text layer (silhouette curvature). The new value is saved to Settings.">
+                <button class="btn-resize" id="btn-soften-minus" title="Less soften (rounder edges)">−</button>
+                <button class="btn-resize" id="btn-soften-plus" title="More soften (wider edge lines)">+</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>
